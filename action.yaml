@@ -1,0 +1,145 @@
+name: 'Deploy Docker + Postgres + Dotnet + EF Core stack'
+description: 'Deploys Docker + Postgres + Dotnet + EF Core stack'
+inputs:
+  server-address: 
+    description: 'Target server hostname'
+    required: true
+
+  compose-files:
+    description: 'Compose files to use when deploying'
+    required: true
+  compose-folder:
+    description: 'Folder on a target server to deploy in'
+    required: true
+
+  database-host:
+    description: 'Database hostname'
+    required: true
+  database-port:
+    description: 'Database port (defaults to 5432)'
+    required: false
+    default: "5432"
+  database-user:
+    description: 'Database user'
+    required: true
+  database-password:
+    description: 'Database password'
+    required: true
+  database-name:
+    description: 'Database name'
+    required: true
+
+  ef-connectionstring-setting:
+    description: 'Name of the setting in appsettings.json that contains connection string'
+    required: false
+    default: "ConnectionString"
+  ef-connectionstring-command-timeout:
+    description: 'Command timeout for EF Core migrations'
+    required: false
+    default: "30"
+  ef-extra-args:
+    description: 'Extra args to pass to dotnet ef invocations'
+    required: false
+    default: ""
+   
+runs:
+  using: "composite"
+  steps:
+  - name: Setup environment variables
+    shell: bash
+    run: >
+      echo "COMPOSE_FILES=$COMPOSE_FILES" | tr '\n' ' ' >> $GITHUB_ENV
+
+      echo -e '\n' >> $GITHUB_ENV
+
+      COMPOSE_FILES_ARG=$(for file in $COMPOSE_FILES; do echo -n "-f $file "; done)
+
+      echo "COMPOSE_FILES_ARG=$COMPOSE_FILES_ARG" >> $GITHUB_ENV
+      
+      echo -e '\n' >> $GITHUB_ENV
+
+      echo "EF_CONNECTION_STRING=Server=${{ inputs.database-host }};Port=${{ inputs.database-port }};
+      User Id=${{ inputs.database-user }};Password=${{ inputs.database-password }};
+      Database=${{ inputs.database-name }};Command Timeout=${{ inputs.ef-connectionstring-command-timeout }};" 
+      >> $GITHUB_ENV
+
+      echo "EF_CONNECTIONSTRING_SETTING=${{ inputs.ef-connectionstring-setting }}" >> $GITHUB_ENV
+
+      echo "EF_ARGS=${{ inputs.ef-extra-args }}" >> $GITHUB_ENV
+    env:
+      COMPOSE_FILES: ${{ inputs.compose-files }}
+
+  - name: Install dotnet-ef
+    shell: bash
+    run: dotnet tool install dotnet-ef -g
+
+  - name: Get last successful live migration name
+    id: get-last-successful-live-migration
+    shell: bash
+    run: |
+      echo -n 'name=' >> $GITHUB_OUTPUT
+
+      LATEST_MIGRATION=$(dotnet ef migrations list $EF_ARGS \
+      --prefix-output --json -- --$EF_CONNECTIONSTRING_SETTING "$EF_CONNECTION_STRING" | \
+      grep ^data | cut -c6- | jq -r 'map(select(.applied == true)) | last.name') 
+
+      ( [[ -z "$LATEST_MIGRATION" ]] || [[ "$LATEST_MIGRATION" == "null" ]] ) && \
+      echo 'No migration detected' && exit 1;
+
+      echo "$LATEST_MIGRATION" >> $GITHUB_OUTPUT
+      echo "LATEST_MIGRATION: $LATEST_MIGRATION"
+
+  - name: Set up Docker Buildx
+    uses: docker/setup-buildx-action@v2
+
+  - name: Calculate short git hash
+    shell: bash
+    run: echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV 
+
+  - name: Calculate set for bake
+    id: bake_set
+    shell: bash
+    run: |
+      TARGETS_ARRAY=$(docker buildx bake $COMPOSE_FILES_ARG --print | jq -cr '.group.default.targets')
+      echo 'SET<<EOF' >> $GITHUB_OUTPUT
+      echo "*.args.COMMIT_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
+      echo "*.labels.COMMIT_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
+      echo $TARGETS_ARRAY | jq -cr '.[]' | while read target; do
+          echo "$target.cache-to=type=gha,mode=max,scope=$GITHUB_REF_NAME-$target" >> $GITHUB_OUTPUT
+          echo "$target.cache-from=type=gha,mode=max,scope=$GITHUB_REF_NAME-$target" >> $GITHUB_OUTPUT
+      done
+      echo 'EOF' >> $GITHUB_OUTPUT
+
+  - name: Build and push
+    uses: docker/bake-action@v2
+    with:
+      push: true
+      set: ${{ steps.bake_set.outputs.SET }}
+      files: ${{ inputs.compose-files }}
+
+  - name: Apply migration to a live database
+    id: live-database-migration
+    shell: bash
+    run: dotnet ef database update $EF_ARGS -- 
+      --$EF_CONNECTIONSTRING_SETTING "$EF_CONNECTION_STRING"
+
+  - name: Deploy compose files
+    shell: bash
+    run: scp $COMPOSE_FILES root@${{ inputs.server-address }}:${{ inputs.compose-folder }}
+
+  - name: Run redeployment
+    shell: bash
+    run: |
+      ssh root@${{ inputs.server-address }} \
+      "set -e 
+      cd ${{ inputs.compose-folder }}
+      docker compose $COMPOSE_FILES_ARG pull 
+      docker compose $COMPOSE_FILES_ARG up -d"
+
+  - name: Revert live migration
+    shell: bash
+    if: failure() && steps.live-database-migration.conclusion == 'success'
+    run: dotnet ef database update $EF_ARGS $PREV_MIGRATION_NAME -- 
+      --$EF_CONNECTIONSTRING_SETTING "$EF_CONNECTION_STRING"
+    env:
+      PREV_MIGRATION_NAME: ${{ steps.get-last-successful-live-migration.outputs.name }}
