@@ -66,9 +66,6 @@ runs:
       echo "COMPOSE_FILES_ARG=$COMPOSE_FILES_ARG" >> $GITHUB_ENV
 
       
-      echo -e '\n' >> $GITHUB_ENV
-
-
       echo "EF_CONNECTION_STRING=Server=${{ inputs.database-host }};Port=${{ inputs.database-port }};
       User Id=${{ inputs.database-user }};Password=${{ inputs.database-password }};
       Database=${{ inputs.database-name }};Command Timeout=${{ inputs.ef-connectionstring-command-timeout }};" 
