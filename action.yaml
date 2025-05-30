@@ -58,20 +58,25 @@ runs:
     run: >
       echo "COMPOSE_FILES=$COMPOSE_FILES" | tr '\n' ' ' >> $GITHUB_ENV
 
-      echo -e '\n' >> $GITHUB_ENV
+      echo '' >> $GITHUB_ENV  
+
 
       COMPOSE_FILES_ARG=$(for file in $COMPOSE_FILES; do echo -n "-f $file "; done)
 
       echo "COMPOSE_FILES_ARG=$COMPOSE_FILES_ARG" >> $GITHUB_ENV
+
       
       echo -e '\n' >> $GITHUB_ENV
+
 
       echo "EF_CONNECTION_STRING=Server=${{ inputs.database-host }};Port=${{ inputs.database-port }};
       User Id=${{ inputs.database-user }};Password=${{ inputs.database-password }};
       Database=${{ inputs.database-name }};Command Timeout=${{ inputs.ef-connectionstring-command-timeout }};" 
       >> $GITHUB_ENV
 
+
       echo "EF_CONNECTIONSTRING_SETTING=${{ inputs.ef-connectionstring-setting }}" >> $GITHUB_ENV
+      
 
       echo "EF_ARGS=${{ inputs.ef-extra-args }}" >> $GITHUB_ENV
     env:
