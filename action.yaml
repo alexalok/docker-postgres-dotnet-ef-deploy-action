@@ -142,7 +142,7 @@ runs:
 
   - name: Deploy compose files
     shell: bash
-    run: scp $COMPOSE_FILES ${{ inputs.ssh-username }}@${{ inputs.server-address }}:${{ inputs.compose-folder }} -P ${{ inputs.ssh-port }}
+    run: scp -P ${{ inputs.ssh-port }} $COMPOSE_FILES ${{ inputs.ssh-username }}@${{ inputs.server-address }}:${{ inputs.compose-folder }}
 
   - name: Run redeployment
     shell: bash
