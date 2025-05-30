@@ -65,6 +65,13 @@ runs:
 
       echo "COMPOSE_FILES_ARG=$COMPOSE_FILES_ARG" >> $GITHUB_ENV
 
+
+      COMPOSE_FILES_FOR_BAKE=$(echo "$COMPOSE_FILES" | tr ' ' '\n' | tr '\n' ',') # spaces to \n, then \n to ,
+
+      COMPOSE_FILES_FOR_BAKE=${COMPOSE_FILES_FOR_BAKE%,} # remove the last ,
+
+      echo "COMPOSE_FILES_FOR_BAKE=$COMPOSE_FILES_FOR_BAKE" >> $GITHUB_ENV
+
       
       echo "EF_CONNECTION_STRING=Server=${{ inputs.database-host }};Port=${{ inputs.database-port }};
       User Id=${{ inputs.database-user }};Password=${{ inputs.database-password }};
@@ -125,7 +132,7 @@ runs:
     with:
       push: true
       set: ${{ steps.bake_set.outputs.SET }}
-      files: ${{ inputs.compose-files }}
+      files: ${{ env.COMPOSE_FILES_FOR_BAKE }}
 
   - name: Apply migration to a live database
     id: live-database-migration
