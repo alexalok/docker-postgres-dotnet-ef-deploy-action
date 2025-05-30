@@ -4,6 +4,10 @@ inputs:
   server-address: 
     description: 'Target server hostname'
     required: true
+  ssh-username:
+    description: 'SSH username'
+    required: false
+    default: "root"
 
   compose-files:
     description: 'Compose files to use when deploying'
@@ -125,12 +129,12 @@ runs:
 
   - name: Deploy compose files
     shell: bash
-    run: scp $COMPOSE_FILES root@${{ inputs.server-address }}:${{ inputs.compose-folder }}
+    run: scp $COMPOSE_FILES ${inputs.ssh-username}@${{ inputs.server-address }}:${{ inputs.compose-folder }}
 
   - name: Run redeployment
     shell: bash
     run: |
-      ssh root@${{ inputs.server-address }} \
+      ssh ${inputs.ssh-username}@${{ inputs.server-address }} \
       "set -e 
       cd ${{ inputs.compose-folder }}
       docker compose $COMPOSE_FILES_ARG pull 
