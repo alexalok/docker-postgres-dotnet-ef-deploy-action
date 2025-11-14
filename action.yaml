@@ -88,7 +88,7 @@ runs:
 
   - name: Install dotnet-ef
     shell: bash
-    run: dotnet tool install dotnet-ef -g
+    run: dotnet tool install --global dotnet-ef --version 9.0.*
 
   - name: Get last successful live migration name
     id: get-last-successful-live-migration
@@ -139,6 +139,19 @@ runs:
     shell: bash
     run: dotnet ef database update $EF_ARGS -- 
       --$EF_CONNECTIONSTRING_SETTING "$EF_CONNECTION_STRING"
+
+  - name: Verify database connection
+    shell: bash
+    run: |
+      echo "Verifying database connection..."
+      PGPASSWORD="${{ inputs.database-password }}" psql \
+        -h "${{ inputs.database-host }}" \
+        -p "${{ inputs.database-port }}" \
+        -U "${{ inputs.database-user }}" \
+        -d "${{ inputs.database-name }}" \
+        -c "SELECT 1" \
+        -t
+      echo "Database connection verified successfully"
 
   - name: Deploy compose files
     shell: bash
