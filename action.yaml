@@ -49,6 +49,10 @@ inputs:
     description: 'Extra args to pass to dotnet ef invocations'
     required: false
     default: ""
+  is-docker-gha-cache-enabled:
+    description: 'Enable GitHub Actions caching for Docker artifacts'
+    required: false
+    default: "true"
    
 runs:
   using: "composite"
@@ -121,10 +125,12 @@ runs:
       echo 'SET<<EOF' >> $GITHUB_OUTPUT
       echo "*.args.COMMIT_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
       echo "*.labels.COMMIT_SHA=$SHA_SHORT" >> $GITHUB_OUTPUT
-      echo $TARGETS_ARRAY | jq -cr '.[]' | while read target; do
+      if [ "${{ inputs.is-docker-gha-cache-enabled }}" = "true" ]; then
+        echo $TARGETS_ARRAY | jq -cr '.[]' | while read target; do
           echo "$target.cache-to=type=gha,mode=max,scope=$GITHUB_REF_NAME-$target" >> $GITHUB_OUTPUT
           echo "$target.cache-from=type=gha,mode=max,scope=$GITHUB_REF_NAME-$target" >> $GITHUB_OUTPUT
-      done
+        done
+      fi
       echo 'EOF' >> $GITHUB_OUTPUT
 
   - name: Build and push
